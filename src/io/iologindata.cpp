@@ -21,7 +21,7 @@
 #include "enums/account_type.hpp"
 #include "enums/account_errors.hpp"
 
-bool IOLoginData::gameWorldAuthentication(const std::string &accountDescriptor, const std::string &password, std::string &characterName, uint32_t &accountId, bool oldProtocol, const uint32_t ip) {
+bool IOLoginData::gameWorldAuthentication(const std::string &accountDescriptor, const std::string &password, std::string &characterName, uint32_t &accountId, bool oldProtocol, const uint32_t ip, const std::string &oneTimePassword) {
 	Account account(accountDescriptor);
 	account.setProtocolCompat(oldProtocol);
 
@@ -37,6 +37,13 @@ bool IOLoginData::gameWorldAuthentication(const std::string &accountDescriptor, 
 	} else {
 		if (!account.authenticate(password)) {
 			return false;
+		}
+
+		if (account.hasOtpSecret()) {
+			if (oneTimePassword.empty() || !account.authenticateOneTimePassword(oneTimePassword)) {
+				g_logger().warn("Account [{}] failed to authenticate with one-time password.", account.getDescriptor());
+				return false;
+			}
 		}
 	}
 

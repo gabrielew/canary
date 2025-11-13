@@ -820,22 +820,32 @@ void ProtocolGame::onRecvFirstMessage(NetworkMessage &msg) {
 	std::string sessionKey = msg.getString();
 	std::string accountDescriptor = sessionKey;
 	std::string password;
+	std::string oneTimePassword;
 
 	if (authType != "session") {
-		size_t pos = sessionKey.find('\n');
-		if (pos == std::string::npos) {
+		try {
+			std::istringstream keyStream(sessionKey);
+			std::string token;
+
+			if (!std::getline(keyStream, accountDescriptor) || accountDescriptor.empty()) {
 			ss << "You must enter your " << (oldProtocol ? "username" : "email") << ".";
 			disconnectClient(ss.str());
 			return;
 		}
-		accountDescriptor = sessionKey.substr(0, pos);
-		if (accountDescriptor.empty()) {
-			ss.str(std::string());
-			ss << "You must enter your " << (oldProtocol ? "username" : "email") << ".";
-			disconnectClient(ss.str());
+
+			if (std::getline(keyStream, token)) {
+				password = token;
+			}
+
+			if (std::getline(keyStream, token)) {
+				oneTimePassword = token;
+			}
+
+		} catch (const std::exception &e) {
+			g_logger().error("[ProtocolGame::onRecvFirstMessage] Failed to parse session key: {}", e.what());
+			disconnectClient("Failed to read session key.");
 			return;
 		}
-		password = sessionKey.substr(pos + 1);
 	}
 
 	if (!oldProtocol && operatingSystem == CLIENTOS_NEW_LINUX) {
@@ -910,7 +920,7 @@ void ProtocolGame::onRecvFirstMessage(NetworkMessage &msg) {
 	}
 
 	uint32_t accountId;
-	if (!IOLoginData::gameWorldAuthentication(accountDescriptor, password, characterName, accountId, oldProtocol, getIP())) {
+	if (!IOLoginData::gameWorldAuthentication(accountDescriptor, password, characterName, accountId, oldProtocol, getIP(), oneTimePassword)) {
 		ss.str(std::string());
 		if (authType == "session") {
 			ss << "Your session has expired. Please log in again.";

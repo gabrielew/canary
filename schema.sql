@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS `accounts` (
     `creation` int(11) UNSIGNED NOT NULL DEFAULT '0',
     `recruiter` INT(6) DEFAULT 0,
     `house_bid_id` int(11) NOT NULL DEFAULT '0',
+    `otp_secret` VARCHAR(32) NOT NULL DEFAULT '',
+    `last_valid_otp` INT(6) DEFAULT NULL,
     CONSTRAINT `accounts_pk` PRIMARY KEY (`id`),
     CONSTRAINT `accounts_unique` UNIQUE (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

@@ -36,6 +36,8 @@ public:
 
 	virtual bool getCoins(const uint32_t &id, CoinType coinType, uint32_t &coins) = 0;
 	virtual bool setCoins(const uint32_t &id, CoinType coinType, const uint32_t &amount) = 0;
+	virtual bool setLastValidOTP(const uint32_t &id, uint32_t otp) = 0;
+	virtual bool getLastValidOTP(const uint32_t &id, uint32_t &otp) = 0;
 	virtual bool registerCoinsTransaction(
 		const uint32_t &id,
 		CoinTransactionType type,

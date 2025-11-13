@@ -131,7 +131,8 @@ public:
 	bool authenticate(const std::string &secret);
 
 	bool authenticateSession();
-
+	bool hasOtpSecret() const;
+	bool authenticateOneTimePassword(const std::string &otp);
 	bool authenticatePassword(const std::string &password);
 
 private:

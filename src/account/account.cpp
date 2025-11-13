@@ -280,6 +280,32 @@ bool Account::authenticateSession() {
 	return true;
 }
 
+bool Account::hasOtpSecret() const {
+	return !m_account->otpSecret.empty();
+}
+
+bool Account::authenticateOneTimePassword(const std::string &otp) {
+	if (!m_account->otpSecret.empty()) {
+		auto ticks = static_cast<uint32_t>(getTimeNow() / 30);
+		for (int i = -1; i <= 1; ++i) {
+			if (generateToken(m_account->otpSecret, ticks + i) == otp) {
+				uint32_t value = std::stoul(otp);
+				g_accountRepository().setLastValidOTP(m_account->id, value);
+				m_account->lastValidOTP = value;
+				return true;
+			}
+		}
+	}
+
+	uint32_t lastOtp = 0;
+	if (g_accountRepository().getLastValidOTP(m_account->id, lastOtp) && lastOtp == std::stoul(otp)) {
+		return true;
+	}
+
+	g_logger().warn("Invalid TOTP for account [{}]", m_account->id);
+	return false;
+}
+
 bool Account::authenticatePassword(const std::string &password) {
 	if (Argon2 {}.argon(password.c_str(), getPassword())) {
 		return true;

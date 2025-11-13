@@ -29,6 +29,8 @@ public:
 
 	bool getCoins(const uint32_t &id, CoinType coinType, uint32_t &coins) override;
 	bool setCoins(const uint32_t &id, CoinType coinType, const uint32_t &amount) override;
+	bool setLastValidOTP(const uint32_t &id, uint32_t otp) override;
+	bool getLastValidOTP(const uint32_t &id, uint32_t &otp) override;
 	bool registerCoinsTransaction(
 		const uint32_t &id,
 		CoinTransactionType type,

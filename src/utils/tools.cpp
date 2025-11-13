@@ -202,48 +202,121 @@ uint16_t getStashSize(const std::map<uint16_t, uint32_t> &itemList) {
 	return size;
 }
 
-std::string generateToken(const std::string &key, uint32_t ticks) {
-	// generate message from ticks
+// Utility function: converts hex string to binary bytes
+static uint8_t hexCharToNibble(char c) {
+	if (c >= '0' && c <= '9') {
+		return c - '0';
+	}
+	c = std::tolower(static_cast<unsigned char>(c));
+	if (c >= 'a' && c <= 'f') {
+		return c - 'a' + 10;
+	}
+	return 0;
+}
+
+std::string hexStringToBytes(const std::string &hex) {
+	std::string bytes;
+	bytes.reserve(hex.size() / 2);
+	for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+		uint8_t high = hexCharToNibble(hex[i]);
+		uint8_t low = hexCharToNibble(hex[i + 1]);
+		bytes.push_back(static_cast<char>((high << 4) | low));
+	}
+	return bytes;
+}
+
+// XOR of two strings
+std::string strXOR(const std::string &a, const std::string &b) {
+	std::string result(a.size(), '\0');
+	std::transform(a.begin(), a.end(), b.begin(), result.begin(), std::bit_xor<>());
+	return result;
+}
+
+// HMAC-SHA1 using transformToSHA1
+std::string hmac_sha1(const std::string &key, const std::string &message) {
+	constexpr size_t blockSize = 64;
+	std::string keyBlock = key;
+
+	if (keyBlock.size() > blockSize) {
+		keyBlock = hexStringToBytes(transformToSHA1(keyBlock));
+	}
+	if (keyBlock.size() < blockSize) {
+		keyBlock.append(blockSize - keyBlock.size(), '\0');
+	}
+
+	const std::string ipad(blockSize, '\x36');
+	const std::string opad(blockSize, '\x5c');
+
+	const std::string iKeyPad = strXOR(keyBlock, ipad);
+	const std::string oKeyPad = strXOR(keyBlock, opad);
+
+	const std::string innerHashHex = transformToSHA1(iKeyPad + message);
+	const std::string innerHash = hexStringToBytes(innerHashHex);
+
+	return transformToSHA1(oKeyPad + innerHash); // hex string de 40 chars
+}
+
+// ----- Decode Base32 to bytes -----
+std::vector<uint8_t> base32Decode(const std::string &encoded) {
+	static constexpr std::string_view base32Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+	std::vector<uint8_t> result;
+
+	int buffer = 0;
+	int bitsLeft = 0;
+	for (char c : encoded) {
+		if (c == '=' || c == ' ') {
+			break;
+		}
+		c = std::toupper(static_cast<unsigned char>(c));
+
+		size_t pos = base32Chars.find(c);
+		if (pos == std::string_view::npos) {
+			continue;
+		}
+
+		buffer = (buffer << 5) | static_cast<int>(pos & 0x1F);
+		bitsLeft += 5;
+
+		if (bitsLeft >= 8) {
+			bitsLeft -= 8;
+			result.push_back(static_cast<uint8_t>((buffer >> bitsLeft) & 0xFF));
+		}
+	}
+	return result;
+}
+
+// ----- TOTP -----
+std::string generateToken(const std::string &base32Key, uint32_t ticks) {
+	std::vector<uint8_t> keyBytes = base32Decode(base32Key);
+	std::string keyBin(reinterpret_cast<const char*>(keyBytes.data()), keyBytes.size());
+	int digits = 6;
+
+	// 8 bytes big endian
 	std::string message(8, 0);
-	for (uint8_t i = 8; --i; ticks >>= 8) {
+	for (int i = 7; i >= 0; --i) {
 		message[i] = static_cast<char>(ticks & 0xFF);
+		ticks >>= 8;
 	}
 
-	// hmac key pad generation
-	std::string iKeyPad(64, 0x36), oKeyPad(64, 0x5C);
-	for (uint8_t i = 0; i < key.length(); ++i) {
-		iKeyPad[i] ^= key[i];
-		oKeyPad[i] ^= key[i];
+	// HMAC-SHA1
+	std::string hmacHex = hmac_sha1(keyBin, message);
+
+	// truncate
+	int offset = std::stoi(hmacHex.substr(39, 1), nullptr, 16) & 0xF;
+	std::string part = hmacHex.substr(offset * 2, 8);
+	uint32_t truncatedHash = std::stoul(part, nullptr, 16) & 0x7FFFFFFF;
+
+	uint32_t mod = 1;
+	for (int i = 0; i < digits; i++) {
+		mod *= 10;
 	}
+	truncatedHash %= mod;
 
-	oKeyPad.reserve(84);
-
-	// hmac concat inner pad with message
-	iKeyPad.append(message);
-
-	// hmac first pass
-	message.assign(transformToSHA1(iKeyPad));
-
-	// hmac concat outer pad with message, conversion from hex to int needed
-	for (uint8_t i = 0; i < message.length(); i += 2) {
-		oKeyPad.push_back(static_cast<char>(std::stol(message.substr(i, 2), nullptr, 16)));
+	std::string code = std::to_string(truncatedHash);
+	if ((int)code.size() < digits) {
+		code.insert(0, digits - code.size(), '0');
 	}
-
-	// hmac second pass
-	message.assign(transformToSHA1(oKeyPad));
-
-	// calculate hmac offset
-	const auto offset = static_cast<uint32_t>(std::stol(message.substr(39, 1), nullptr, 16) & 0xF);
-
-	// get truncated hash
-	const uint32_t truncHash = std::stol(message.substr(2 * offset, 8), nullptr, 16) & 0x7FFFFFFF;
-	message.assign(std::to_string(truncHash));
-
-	// return only last AUTHENTICATOR_DIGITS (default 6) digits, also asserts exactly 6 digits
-	const uint32_t hashLen = message.length();
-	message.assign(message.substr(hashLen - std::min(hashLen, AUTHENTICATOR_DIGITS)));
-	message.insert(0, AUTHENTICATOR_DIGITS - std::min(hashLen, AUTHENTICATOR_DIGITS), '0');
-	return message;
+	return code;
 }
 
 void replaceString(std::string &str, const std::string &sought, const std::string &replacement) {
