@@ -828,10 +828,10 @@ void ProtocolGame::onRecvFirstMessage(NetworkMessage &msg) {
 			std::string token;
 
 			if (!std::getline(keyStream, accountDescriptor) || accountDescriptor.empty()) {
-			ss << "You must enter your " << (oldProtocol ? "username" : "email") << ".";
-			disconnectClient(ss.str());
-			return;
-		}
+				ss << "You must enter your " << (oldProtocol ? "username" : "email") << ".";
+				disconnectClient(ss.str());
+				return;
+			}
 
 			if (std::getline(keyStream, token)) {
 				password = token;
